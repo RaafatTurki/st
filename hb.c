@@ -106,7 +106,6 @@ hbtransform(HbTransformData *data, XftFont *xfont, const Glyph *glyphs, int star
 	}
 
 	hb_buffer_reset(buffer);
-	hb_buffer_set_direction(buffer, HB_DIRECTION_LTR);
 	hb_buffer_set_cluster_level(buffer, HB_BUFFER_CLUSTER_LEVEL_MONOTONE_CHARACTERS);
 
 	/* Resize the buffer if required length is larger. */
@@ -123,6 +122,7 @@ hbtransform(HbTransformData *data, XftFont *xfont, const Glyph *glyphs, int star
 			hbrunebuffer.runes[rune_idx] = 0x0020;
 	}
 	hb_buffer_add_codepoints(buffer, hbrunebuffer.runes, length, 0, length);
+	hb_buffer_guess_segment_properties(buffer);
 
 	/* Shape the segment. */
 	hb_shape(font, buffer, features, sizeof(features)/sizeof(hb_feature_t));

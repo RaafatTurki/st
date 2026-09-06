@@ -32,6 +32,10 @@ char *argv0;
 #include "sixel.h"
 #endif // SIXEL_PATCH
 
+#if BIDI_PATCH
+#include <fribidi.h>
+#endif // BIDI_PATCH
+
 #if UNDERCURL_PATCH
 /* Undercurl slope types */
 enum undercurl_slope_type {
@@ -3030,6 +3034,68 @@ xstartdraw(void)
 	return IS_SET(MODE_VISIBLE);
 }
 
+#if BIDI_PATCH
+static void
+apply_bidi(Glyph *line, int len)
+{
+	FriBidiChar *logical = NULL;
+	FriBidiChar *visual = NULL;
+	FriBidiParType base_dir = FRIBIDI_PAR_ON;
+	FriBidiCharType *types = NULL;
+	FriBidiStrIndex *ltov = NULL;
+	Glyph *temp_line = NULL;
+	int i, has_rtl = 0;
+
+	if (len <= 0)
+		return;
+
+	if (!(logical = malloc((size_t)len * sizeof(FriBidiChar))))
+		return;
+	if (!(visual = malloc((size_t)len * sizeof(FriBidiChar))))
+		goto cleanup;
+	if (!(types = malloc((size_t)len * sizeof(FriBidiCharType))))
+		goto cleanup;
+	if (!(ltov = malloc((size_t)len * sizeof(FriBidiStrIndex))))
+		goto cleanup;
+	if (!(temp_line = malloc((size_t)len * sizeof(Glyph))))
+		goto cleanup;
+
+	for (i = 0; i < len; i++)
+		logical[i] = (FriBidiChar)line[i].u;
+
+	fribidi_get_bidi_types(logical, len, types);
+	for (i = 0; i < len; i++) {
+		if (FRIBIDI_IS_RTL(types[i])) {
+			has_rtl = 1;
+			break;
+		}
+	}
+	if (!has_rtl)
+		goto cleanup;
+
+	if (!fribidi_log2vis(logical, len, &base_dir, visual, NULL, ltov, NULL))
+		goto cleanup;
+
+	for (i = 0; i < len; i++) {
+		if (ltov[i] >= 0 && ltov[i] < len) {
+			temp_line[i] = line[ltov[i]];
+			temp_line[i].u = (Rune)visual[i];
+		} else {
+			temp_line[i] = line[i];
+		}
+	}
+
+	memcpy(line, temp_line, (size_t)len * sizeof(Glyph));
+
+cleanup:
+	free(logical);
+	free(visual);
+	free(types);
+	free(ltov);
+	free(temp_line);
+}
+#endif // BIDI_PATCH
+
 #if LIGATURES_PATCH && WIDE_GLYPHS_PATCH
 void
 xdrawline(Line line, int x1, int y1, int x2)
@@ -3042,10 +3108,24 @@ xdrawline(Line line, int x1, int y1, int x2)
 	/* Draw line in 2 passes: background and foreground. This way wide glyphs
 	   won't get truncated (#223) */
 
+#if BIDI_PATCH
+	int len = x2 - x1;
+	Glyph *bidi_line = NULL;
+
+	if (len > 0 && (bidi_line = malloc((size_t)len * sizeof(Glyph)))) {
+		memcpy(bidi_line, &line[x1], (size_t)len * sizeof(Glyph));
+		apply_bidi(bidi_line, len);
+	}
+#endif // BIDI_PATCH
+
 	/* background */
 	i = j = ox = 0;
 	for (x = x1; x < x2; x++) {
+#if BIDI_PATCH
+		new = bidi_line ? bidi_line[x - x1] : line[x];
+#else
 		new = line[x];
+#endif // BIDI_PATCH
 		if (new.mode == ATTR_WDUMMY)
 			continue;
 		if (selected(x, y1))
@@ -3055,7 +3135,15 @@ xdrawline(Line line, int x1, int y1, int x2)
 			new.mode ^= ATTR_REVERSE;
 			#endif // SELECTION_COLORS_PATCH
 		if ((i > 0) && ATTRCMP(seq[j].base, new)) {
-			numspecs = xmakeglyphfontspecs(specs, &line[ox], x - ox, ox, y1);
+			numspecs = xmakeglyphfontspecs(
+				specs,
+				#if BIDI_PATCH
+				bidi_line ? &bidi_line[ox - x1] : &line[ox],
+				#else
+				&line[ox],
+				#endif // BIDI_PATCH
+				x - ox, ox, y1
+			);
 			xdrawglyphfontspecs(specs, seq[j].base, numspecs, ox, y1, DRAW_BG, x - ox);
 			seq[j].charlen = x - ox;
 			seq[j++].numspecs = numspecs;
@@ -3070,7 +3158,15 @@ xdrawline(Line line, int x1, int y1, int x2)
 		i++;
 	}
 	if (i > 0) {
-		numspecs = xmakeglyphfontspecs(specs, &line[ox], x2 - ox, ox, y1);
+		numspecs = xmakeglyphfontspecs(
+			specs,
+			#if BIDI_PATCH
+			bidi_line ? &bidi_line[ox - x1] : &line[ox],
+			#else
+			&line[ox],
+			#endif // BIDI_PATCH
+			x2 - ox, ox, y1
+		);
 		xdrawglyphfontspecs(specs, seq[j].base, numspecs, ox, y1, DRAW_BG, x2 - ox);
 		seq[j].charlen = x2 - ox;
 		seq[j++].numspecs = numspecs;
@@ -3082,6 +3178,10 @@ xdrawline(Line line, int x1, int y1, int x2)
 		xdrawglyphfontspecs(specs, seq[i].base, seq[i].numspecs, seq[i].ox, y1, DRAW_FG, seq[i].charlen);
 		specs += seq[i].numspecs;
 	}
+
+#if BIDI_PATCH
+	free(bidi_line);
+#endif // BIDI_PATCH
 
 	#if KEYBOARDSELECT_PATCH && REFLOW_PATCH
 	kbds_drawstatusbar(y1);
@@ -3096,9 +3196,23 @@ xdrawline(Line line, int x1, int y1, int x2)
 
 	XftGlyphFontSpec *specs = xw.specbuf;
 
+#if BIDI_PATCH
+	int len = x2 - x1;
+	Glyph *bidi_line = NULL;
+
+	if (len > 0 && (bidi_line = malloc((size_t)len * sizeof(Glyph)))) {
+		memcpy(bidi_line, &line[x1], (size_t)len * sizeof(Glyph));
+		apply_bidi(bidi_line, len);
+	}
+#endif // BIDI_PATCH
+
 	i = ox = 0;
 	for (x = x1; x < x2; x++) {
+#if BIDI_PATCH
+		new = bidi_line ? bidi_line[x - x1] : line[x];
+#else
 		new = line[x];
+#endif // BIDI_PATCH
 		if (new.mode == ATTR_WDUMMY)
 			continue;
 		if (selected(x, y1))
@@ -3108,7 +3222,15 @@ xdrawline(Line line, int x1, int y1, int x2)
 			new.mode ^= ATTR_REVERSE;
 			#endif // SELECTION_COLORS_PATCH
 		if ((i > 0) && ATTRCMP(base, new)) {
-			numspecs = xmakeglyphfontspecs(specs, &line[ox], x - ox, ox, y1);
+			numspecs = xmakeglyphfontspecs(
+				specs,
+				#if BIDI_PATCH
+				bidi_line ? &bidi_line[ox - x1] : &line[ox],
+				#else
+				&line[ox],
+				#endif // BIDI_PATCH
+				x - ox, ox, y1
+			);
 			xdrawglyphfontspecs(specs, base, numspecs, ox, y1, x - ox);
 			i = 0;
 		}
@@ -3119,9 +3241,21 @@ xdrawline(Line line, int x1, int y1, int x2)
 		i++;
 	}
 	if (i > 0) {
-		numspecs = xmakeglyphfontspecs(specs, &line[ox], x2 - ox, ox, y1);
+		numspecs = xmakeglyphfontspecs(
+			specs,
+			#if BIDI_PATCH
+			bidi_line ? &bidi_line[ox - x1] : &line[ox],
+			#else
+			&line[ox],
+			#endif // BIDI_PATCH
+			x2 - ox, ox, y1
+		);
 		xdrawglyphfontspecs(specs, base, numspecs, ox, y1, x2 - ox);
 	}
+
+#if BIDI_PATCH
+	free(bidi_line);
+#endif // BIDI_PATCH
 
 	#if KEYBOARDSELECT_PATCH && REFLOW_PATCH
 	kbds_drawstatusbar(y1);
@@ -3135,7 +3269,25 @@ xdrawline(Line line, int x1, int y1, int x2)
 	Glyph base, new;
 	XftGlyphFontSpec *specs;
 
-	numspecs_cached = xmakeglyphfontspecs(xw.specbuf, &line[x1], x2 - x1, x1, y1);
+#if BIDI_PATCH
+	int len = x2 - x1;
+	Glyph *bidi_line = NULL;
+
+	if (len > 0 && (bidi_line = malloc((size_t)len * sizeof(Glyph)))) {
+		memcpy(bidi_line, &line[x1], (size_t)len * sizeof(Glyph));
+		apply_bidi(bidi_line, len);
+	}
+#endif // BIDI_PATCH
+
+	numspecs_cached = xmakeglyphfontspecs(
+		xw.specbuf,
+		#if BIDI_PATCH
+		bidi_line ? bidi_line : &line[x1],
+		#else
+		&line[x1],
+		#endif // BIDI_PATCH
+		x2 - x1, x1, y1
+	);
 
 	/* Draw line in 2 passes: background and foreground. This way wide glyphs
 	   won't get truncated (#223) */
@@ -3144,7 +3296,11 @@ xdrawline(Line line, int x1, int y1, int x2)
 		numspecs = numspecs_cached;
 		i = ox = 0;
 		for (x = x1; x < x2 && i < numspecs; x++) {
+#if BIDI_PATCH
+			new = bidi_line ? bidi_line[x - x1] : line[x];
+#else
 			new = line[x];
+#endif // BIDI_PATCH
 			if (new.mode == ATTR_WDUMMY)
 				continue;
 			if (selected(x, y1))
@@ -3169,6 +3325,10 @@ xdrawline(Line line, int x1, int y1, int x2)
 			xdrawglyphfontspecs(specs, base, i, ox, y1, dmode);
 	}
 
+#if BIDI_PATCH
+	free(bidi_line);
+#endif // BIDI_PATCH
+
 	#if KEYBOARDSELECT_PATCH && REFLOW_PATCH
 	kbds_drawstatusbar(y1);
 	#endif // KEYBOARDSELECT_PATCH
@@ -3182,10 +3342,32 @@ xdrawline(Line line, int x1, int y1, int x2)
 
 	XftGlyphFontSpec *specs = xw.specbuf;
 
-	numspecs = xmakeglyphfontspecs(specs, &line[x1], x2 - x1, x1, y1);
+#if BIDI_PATCH
+	int len = x2 - x1;
+	Glyph *bidi_line = NULL;
+
+	if (len > 0 && (bidi_line = malloc((size_t)len * sizeof(Glyph)))) {
+		memcpy(bidi_line, &line[x1], (size_t)len * sizeof(Glyph));
+		apply_bidi(bidi_line, len);
+	}
+#endif // BIDI_PATCH
+
+	numspecs = xmakeglyphfontspecs(
+		specs,
+		#if BIDI_PATCH
+		bidi_line ? bidi_line : &line[x1],
+		#else
+		&line[x1],
+		#endif // BIDI_PATCH
+		x2 - x1, x1, y1
+	);
 	i = ox = 0;
 	for (x = x1; x < x2 && i < numspecs; x++) {
+#if BIDI_PATCH
+		new = bidi_line ? bidi_line[x - x1] : line[x];
+#else
 		new = line[x];
+#endif // BIDI_PATCH
 		if (new.mode == ATTR_WDUMMY)
 			continue;
 		if (selected(x, y1))
@@ -3208,6 +3390,10 @@ xdrawline(Line line, int x1, int y1, int x2)
 	}
 	if (i > 0)
 		xdrawglyphfontspecs(specs, base, i, ox, y1);
+
+#if BIDI_PATCH
+	free(bidi_line);
+#endif // BIDI_PATCH
 
 	#if KEYBOARDSELECT_PATCH && REFLOW_PATCH
 	kbds_drawstatusbar(y1);

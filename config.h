@@ -130,8 +130,8 @@ int hidecursor = 1;
  *    Bold affects lines thickness if boxdraw_bold is not 0. Italic is ignored.
  * 0: disable (render all U25XX glyphs normally from the font).
  */
-const int boxdraw = 0;
-const int boxdraw_bold = 0;
+const int boxdraw = 1;
+const int boxdraw_bold = 1;
 
 /* braille (U28XX):  1: render as adjacent "pixels",  0: use font */
 const int boxdraw_braille = 0;
@@ -266,7 +266,7 @@ static Rune stcursor = 0x2603; /* snowman (U+2603) */
  * 6: Bar ("|")
  * 7: Snowman ("☃")
  */
-static unsigned int cursorshape = 2;
+static unsigned int cursorshape = 4;
 #endif // BLINKING_CURSOR_PATCH
 
 /*
@@ -390,8 +390,8 @@ static MouseShortcut mshortcuts[] = {
 	{ ShiftMask,            Button5, ttysend,        {.s = "\033[6;2~"} },
 	#endif // SCROLLBACK_MOUSE_PATCH
 	#if SCROLLBACK_MOUSE_ALTSCREEN_PATCH || REFLOW_PATCH
-	{ XK_ANY_MOD,           Button4, kscrollup,      {.i = 1},      0, S_PRI },
-	{ XK_ANY_MOD,           Button5, kscrolldown,    {.i = 1},      0, S_PRI },
+	{ XK_NO_MOD,            Button4, kscrollup,      {.i = 1},      0, S_PRI },
+	{ XK_NO_MOD,            Button5, kscrolldown,    {.i = 1},      0, S_PRI },
 	{ XK_ANY_MOD,           Button4, ttysend,        {.s = "\031"}, 0, S_ALT },
 	{ XK_ANY_MOD,           Button5, ttysend,        {.s = "\005"}, 0, S_ALT },
 	#else
@@ -406,7 +406,7 @@ static MouseShortcut mshortcuts[] = {
 
 #if EXTERNALPIPE_PATCH // example command
 static char *openurlcmd[] = { "/bin/sh", "-c",
-	"xurls | dmenu -l 10 -w $WINDOWID | xargs -r open",
+	"xurls | rofi -dmenu -p 'URLs: ' -l 10 -w $WINDOWID | xargs -r xdg-open",
 	"externalpipe", NULL };
 
 #if EXTERNALPIPEIN_PATCH // example command
@@ -422,9 +422,9 @@ static Shortcut shortcuts[] = {
 	{ ControlMask,          XK_Print,       toggleprinter,   {.i =  0} },
 	{ ShiftMask,            XK_Print,       printscreen,     {.i =  0} },
 	{ XK_ANY_MOD,           XK_Print,       printsel,        {.i =  0} },
-	{ TERMMOD,              XK_Prior,       zoom,            {.f = +1} },
-	{ TERMMOD,              XK_Next,        zoom,            {.f = -1} },
-	{ TERMMOD,              XK_Home,        zoomreset,       {.f =  0} },
+	{ TERMMOD,              XK_plus,        zoom,            {.f = +1} },
+	{ TERMMOD,              XK_underscore,  zoom,            {.f = -1} },
+	{ TERMMOD,              XK_parenright,  zoomreset,       {.f =  0} },
 	{ TERMMOD,              XK_C,           clipcopy,        {.i =  0} },
 	{ TERMMOD,              XK_V,           clippaste,       {.i =  0} },
 	#if ALPHA_PATCH
@@ -439,10 +439,10 @@ static Shortcut shortcuts[] = {
 	{ XK_NO_MOD,            XK_F11,         fullscreen,      {.i =  0} },
 	{ MODKEY,               XK_Return,      fullscreen,      {.i =  0} },
 	#endif // FULLSCREEN_PATCH
-	#if SCROLLBACK_PATCH || REFLOW_PATCH
+	#if SCROLLBACK_PATCH
 	{ ShiftMask,            XK_Page_Up,     kscrollup,       {.i = -1}, S_PRI },
 	{ ShiftMask,            XK_Page_Down,   kscrolldown,     {.i = -1}, S_PRI },
-	#endif // SCROLLBACK_PATCH || REFLOW_PATCH
+	#endif // SCROLLBACK_PATCH
 	#if CLIPBOARD_PATCH
 	{ TERMMOD,              XK_Y,           clippaste,       {.i =  0} },
 	{ ShiftMask,            XK_Insert,      clippaste,       {.i =  0} },

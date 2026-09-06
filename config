@@ -1,0 +1,27 @@
+#!/bin/bash
+
+set -euo pipefail
+
+cmd_update() {
+	git fetch upstream
+	git rebase upstream/master master
+}
+
+cmd_list() {
+	awk '$1 == "#define" && $3 == 1 { print $2 }' patches.h | sed 's/_PATCH//g'
+}
+
+cmd_install() {
+	sudo make install
+	sudo make clean
+}
+
+case "${1:-}" in
+	update) cmd_update ;;
+	list) cmd_list ;;
+	install) cmd_install ;;
+	*)
+		echo "usage: $0 {update|list|push}" >&2
+		exit 1
+		;;
+esac

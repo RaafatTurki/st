@@ -21,26 +21,32 @@ PKG_CONFIG = pkg-config
 #XCURSOR = `$(PKG_CONFIG) --libs xcursor`
 
 # Uncomment the lines below for the ligatures patch / LIGATURES_PATCH
-#LIGATURES_C = hb.c
-#LIGATURES_H = hb.h
-#LIGATURES_INC = `$(PKG_CONFIG) --cflags harfbuzz`
-#LIGATURES_LIBS = `$(PKG_CONFIG) --libs harfbuzz`
+LIGATURES_C = hb.c
+LIGATURES_H = hb.h
+LIGATURES_INC = `$(PKG_CONFIG) --cflags harfbuzz`
+LIGATURES_LIBS = `$(PKG_CONFIG) --libs harfbuzz`
+
+# Uncomment the lines below for the bidi patch / BIDI_PATCH
+BIDI_INC = `$(PKG_CONFIG) --cflags fribidi`
+BIDI_LIBS = `$(PKG_CONFIG) --libs fribidi`
 
 # Uncomment this for the SIXEL patch / SIXEL_PATCH
-#SIXEL_C = sixel.c sixel_hls.c
-#SIXEL_LIBS = `$(PKG_CONFIG) --libs imlib2`
+SIXEL_C = sixel.c sixel_hls.c
+SIXEL_LIBS = `$(PKG_CONFIG) --libs imlib2`
 
 # Uncomment for the netwmicon patch / NETWMICON_PATCH
-#NETWMICON_LIBS = `$(PKG_CONFIG) --libs gdlib`
+NETWMICON_LIBS = `$(PKG_CONFIG) --libs gdlib`
 
 # includes and libs, uncomment harfbuzz for the ligatures patch
 INCS = -I$(X11INC) \
        `$(PKG_CONFIG) --cflags fontconfig` \
        `$(PKG_CONFIG) --cflags freetype2` \
+       $(BIDI_INC) \
        $(LIGATURES_INC)
 LIBS = -L$(X11LIB) -lm -lX11 -lutil -lXft ${SIXEL_LIBS} ${XRENDER} ${XCURSOR}\
        `$(PKG_CONFIG) --libs fontconfig` \
        `$(PKG_CONFIG) --libs freetype2` \
+       $(BIDI_LIBS) \
        $(LIGATURES_LIBS) \
        $(NETWMICON_LIBS)
 
